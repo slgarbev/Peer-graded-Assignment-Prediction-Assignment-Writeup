@@ -1,0 +1,95 @@
+---
+title: "Peer-graded Assignment: Prediction Assignment Writeup"
+author: "Stefan Garbev"
+date: "28/07/2019"
+output: html_document
+---
+
+
+# Summary
+In the below project I use a training dataset, which contains 19622 observations of 160 variables regarding activities measured by movement devices. The goal was to find a model that could accurately predict the class of barbel lift. I reduced the variables to 53 relevant ones (including the dependent), and split the training data set into a specific training one containing 70% of the observations and a validation one containing the remaining 30%. Using a regression tree proved inefficient as it was able to predict ~50% of the observations in the validation set. Using a boosted trees model produced a model that was able to predict the observations in the validation set with a 95% accuracy. I used the GBM to predict the remaining 20 observations in the test set, which it was able to do perfectly.
+
+
+# Project Information
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+# Package loading and Data Loading
+
+```{r setup}
+library(caret)
+
+traindata<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testdata<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+FULLtraining<-read.csv(traindata,na.strings="NA")
+testing <- read.csv(testdata,na.strings="NA")
+dim(FULLtraining)
+dim(testing)
+
+```
+
+
+## Removing the variables that have near 0 variance
+```{r}
+zerovariances <- nearZeroVar(FULLtraining)
+FULLtraining <- FULLtraining[, -zerovariances]
+testing <- testing[, -zerovariances]
+```
+
+## Removing any variables that don't have any values
+```{r}
+fullobsv <- apply(FULLtraining, 2, function(x) sum(is.na(x))) == 0
+FULLtraining <- FULLtraining[, fullobsv]
+testing <- testing[, fullobsv]
+```
+
+
+# Removing the first variables, used for identification of the observation
+```{r}
+FULLtraining <- FULLtraining[, -(1:6)]
+testing  <- testing[, -(1:6)]
+```
+
+# Subsetting a validation set   
+```{r}
+set.seed(1011001)
+inTrain <- createDataPartition(FULLtraining$classe, p=0.70, list=FALSE)
+training <- FULLtraining[inTrain, ]
+validation <- FULLtraining[-inTrain, ]
+```
+
+# Modelling
+
+## Using regression trees "RPART" for Modelling  
+```{r}
+modelrpart <- train(classe ~ ., method="rpart", data=training)
+```
+
+## Using the validation subset to determine the accuracy of the regression tree model
+```{r}
+rpartprediction <- predict(modelrpart, validation)
+confusionMatrix(validation$classe, rpartprediction)
+```
+This model is very inaccurate, furthermore, it has no predictions for "D" which cannot be true. Therefore we must continue with another model.
+
+
+## Using boosted trees "GBM" for Modelling   
+```{r}
+modelgbm <- train(classe ~ ., method="gbm", data=training,trControl=trainControl(method = "repeatedcv", number = 5, repeats = 1),verbose=FALSE)
+```
+
+## Using the validation subset to determine the accuracy of the GBM model
+```{r}
+gbmprediction <- predict(modelgbm, validation)
+confusionMatrix(validation$classe, gbmprediction)
+```
+While we still see some error in the predictions, a 95% Accuracy is highly significant so we can continue using the GBM model.
+
+
+# Predicting the answers from the Testing sample
+```{r}
+pred <- predict(modelgbm, newdata=testing)
+pred
+```
+
